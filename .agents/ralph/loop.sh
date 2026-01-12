@@ -29,7 +29,17 @@ DEFAULT_RUNS_DIR=".ralph/runs"
 DEFAULT_GUARDRAILS_REF=".agents/ralph/references/GUARDRAILS.md"
 DEFAULT_CONTEXT_REF=".agents/ralph/references/CONTEXT_ENGINEERING.md"
 DEFAULT_ACTIVITY_CMD=".agents/ralph/log-activity.sh"
-DEFAULT_AGENT_CMD="codex exec --yolo -"
+if [[ -n "${RALPH_ROOT:-}" ]]; then
+  agents_path="$RALPH_ROOT/.agents/ralph/agents.sh"
+else
+  agents_path="$SCRIPT_DIR/agents.sh"
+fi
+if [[ -f "$agents_path" ]]; then
+  # shellcheck source=/dev/null
+  source "$agents_path"
+fi
+
+DEFAULT_AGENT_CMD="${AGENT_CODEX_CMD:-codex exec --yolo --skip-git-repo-check -}"
 DEFAULT_MAX_ITERATIONS=25
 DEFAULT_NO_COMMIT=false
 PRD_REQUEST_PATH=""
@@ -84,8 +94,9 @@ CONTEXT_REF="$(abs_path "$CONTEXT_REF")"
 ACTIVITY_CMD="$(abs_path "$ACTIVITY_CMD")"
 
 require_agent() {
+  local agent_cmd="${1:-$AGENT_CMD}"
   local agent_bin
-  agent_bin="${AGENT_CMD%% *}"
+  agent_bin="${agent_cmd%% *}"
   if [ -z "$agent_bin" ]; then
     echo "AGENT_CMD is empty. Set it in config.sh."
     exit 1
@@ -117,6 +128,20 @@ run_agent() {
     eval "$cmd"
   else
     cat "$prompt_file" | eval "$AGENT_CMD"
+  fi
+}
+
+run_agent_inline() {
+  local prompt_file="$1"
+  local prompt_content
+  prompt_content="$(cat "$prompt_file")"
+  local escaped
+  escaped=$(printf "%s" "$prompt_content" | sed "s/'/'\\\\''/g")
+  if [[ "$PRD_AGENT_CMD" == *"{prompt}"* ]]; then
+    local cmd="${PRD_AGENT_CMD//\{prompt\}/'$escaped'}"
+    eval "$cmd"
+  else
+    eval "$PRD_AGENT_CMD '$escaped'"
   fi
 }
 
@@ -159,8 +184,13 @@ if [ "$MODE" = "plan" ]; then
 fi
 
 if [ "$MODE" = "prd" ]; then
+  PRD_USE_INLINE=1
+  if [ -z "$PRD_AGENT_CMD" ]; then
+    PRD_AGENT_CMD="$AGENT_CMD"
+    PRD_USE_INLINE=0
+  fi
   if [ "${RALPH_DRY_RUN:-}" != "1" ]; then
-    require_agent
+    require_agent "$PRD_AGENT_CMD"
   fi
 
   mkdir -p "$(dirname "$PRD_PATH")" "$TMP_DIR"
@@ -192,12 +222,17 @@ if [ "$MODE" = "prd" ]; then
     echo "Use the \$prd skill to create a Product Requirements Document."
     echo "Save the PRD to: $PRD_PATH"
     echo "Do NOT implement anything."
+    echo "After creating the PRD, tell the user to close the session and run \`ralph plan\`."
     echo ""
     echo "User request:"
     cat "$PRD_REQUEST_PATH"
   } > "$PRD_PROMPT_FILE"
 
-  run_agent "$PRD_PROMPT_FILE"
+  if [ "$PRD_USE_INLINE" -eq 1 ]; then
+    run_agent_inline "$PRD_PROMPT_FILE"
+  else
+    run_agent "$PRD_PROMPT_FILE"
+  fi
   exit 0
 fi
 
@@ -679,6 +714,13 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 done
 
 echo "Reached max iterations ($MAX_ITERATIONS)."
+if [ "$MODE" = "plan" ]; then
+  echo ""
+  echo "Next steps (if you want to proceed):"
+  echo "1) Review the plan in \"$PLAN_PATH\"."
+  echo "2) Start implementation with: ralph build"
+  echo "3) Test a single run without committing: ralph build 1 --no-commit"
+fi
 if [ "$HAS_ERROR" = "true" ]; then
   exit 1
 fi

@@ -33,8 +33,9 @@ function usage() {
 
 Commands:
   install [--skills] [--force]        Copy .agents/ralph into the current repo
-  prd "<request>" [--out path]        Generate a PRD via agent
+  prd ["<request>"] [--out path]      Generate a PRD via agent
   ping                               Minimal agent health check
+  log "<message>"                    Append to .ralph/activity.log
   build [n] [--no-commit]             Run build loop (default)
   plan [n]                            Run planning loop
   help                               Show this message
@@ -249,11 +250,70 @@ async function main() {
   }
 
   const loopArgs = args.length ? args : ["build"];
-  const agentMap = {
-    codex: "codex exec --yolo -",
-    claude: "claude -p --dangerously-skip-permissions \"$(cat {prompt})\"",
-    droid: "droid exec --skip-permissions-unsafe -f {prompt}",
+  const loadAgentMap = () => {
+    const defaults = {
+      codex: "codex exec --yolo --skip-git-repo-check -",
+      claude: "claude -p --dangerously-skip-permissions \"$(cat {prompt})\"",
+      droid: "droid exec --skip-permissions-unsafe -f {prompt}",
+    };
+    const interactiveDefaults = {
+      codex: "codex --yolo {prompt}",
+      claude: "claude --dangerously-skip-permissions {prompt}",
+      droid: "droid --skip-permissions-unsafe {prompt}",
+    };
+    const agentsPath = path.join(templateDir, "agents.sh");
+    if (!exists(agentsPath)) {
+      return {
+        headless: defaults,
+        interactive: interactiveDefaults,
+        defaultAgent: "codex",
+      };
+    }
+    const safePath = agentsPath.replace(/'/g, "'\\''");
+    const bashCmd = [
+      `source '${safePath}'`,
+      'printf "DEFAULT_AGENT=%s\\n" "${DEFAULT_AGENT:-}"',
+      'printf "AGENT_CODEX_CMD=%s\\n" "${AGENT_CODEX_CMD:-}"',
+      'printf "AGENT_CLAUDE_CMD=%s\\n" "${AGENT_CLAUDE_CMD:-}"',
+      'printf "AGENT_DROID_CMD=%s\\n" "${AGENT_DROID_CMD:-}"',
+      'printf "AGENT_CODEX_INTERACTIVE_CMD=%s\\n" "${AGENT_CODEX_INTERACTIVE_CMD:-}"',
+      'printf "AGENT_CLAUDE_INTERACTIVE_CMD=%s\\n" "${AGENT_CLAUDE_INTERACTIVE_CMD:-}"',
+      'printf "AGENT_DROID_INTERACTIVE_CMD=%s\\n" "${AGENT_DROID_INTERACTIVE_CMD:-}"',
+    ].join("; ");
+    const result = spawnSync("bash", ["-lc", bashCmd], { encoding: "utf-8" });
+    if (result.status !== 0) {
+      return {
+        headless: defaults,
+        interactive: interactiveDefaults,
+        defaultAgent: "codex",
+      };
+    }
+    const parsed = new Map();
+    for (const line of String(result.stdout || "").split("\n")) {
+      if (!line) continue;
+      const idx = line.indexOf("=");
+      if (idx === -1) continue;
+      parsed.set(line.slice(0, idx), line.slice(idx + 1));
+    }
+    const readVar = (name) => parsed.get(name) || null;
+    return {
+      headless: {
+        codex: readVar("AGENT_CODEX_CMD") || defaults.codex,
+        claude: readVar("AGENT_CLAUDE_CMD") || defaults.claude,
+        droid: readVar("AGENT_DROID_CMD") || defaults.droid,
+      },
+      interactive: {
+        codex: readVar("AGENT_CODEX_INTERACTIVE_CMD") || interactiveDefaults.codex,
+        claude: readVar("AGENT_CLAUDE_INTERACTIVE_CMD") || interactiveDefaults.claude,
+        droid: readVar("AGENT_DROID_INTERACTIVE_CMD") || interactiveDefaults.droid,
+      },
+      defaultAgent: readVar("DEFAULT_AGENT") || "codex",
+    };
   };
+  const agentDefs = loadAgentMap();
+  const agentMap = agentDefs.headless;
+  const agentInteractiveMap = agentDefs.interactive;
+  const defaultAgent = agentDefs.defaultAgent || "codex";
   if (agentOverride) {
     const mapped = agentMap[agentOverride];
     if (!mapped) {
@@ -264,6 +324,9 @@ async function main() {
     process.env.AGENT_CMD = mapped;
   }
   const env = { ...process.env, RALPH_ROOT: cwd };
+  if (!env.ACTIVITY_CMD) {
+    env.ACTIVITY_CMD = "ralph log";
+  }
   const resolvedPrdPath = prdOutPath || prdPath;
   if (resolvedPrdPath) env.PRD_PATH = resolvedPrdPath;
   if (planPath) env.PLAN_PATH = planPath;
@@ -271,13 +334,13 @@ async function main() {
   if (templateDir === globalDir) {
     env.PROMPT_PLAN = path.join(templateDir, "PROMPT_plan.md");
     env.PROMPT_BUILD = path.join(templateDir, "PROMPT_build.md");
-    env.ACTIVITY_CMD = path.join(templateDir, "log-activity.sh");
     env.GUARDRAILS_REF = path.join(templateDir, "references", "GUARDRAILS.md");
     env.CONTEXT_REF = path.join(templateDir, "references", "CONTEXT_ENGINEERING.md");
   }
 
   if (cmd === "ping") {
-    const agentCmd = agentOverride ? agentMap[agentOverride] : agentMap.codex;
+    const agentName = agentOverride || defaultAgent;
+    const agentCmd = agentMap[agentName];
     if (!agentCmd) {
       console.error("Unknown agent for ping.");
       process.exit(1);
@@ -304,14 +367,48 @@ async function main() {
     process.exit(0);
   }
 
-  if (cmd === "prd") {
-    const request = args.slice(1).join(" ").trim();
-    if (!request) {
-      console.error("Missing PRD request. Usage: ralph prd \"<request>\" [--out path]");
+  if (cmd === "log") {
+    const message = args.slice(1).join(" ").trim();
+    if (!message) {
+      console.error('Usage: ralph log "message"');
       process.exit(1);
+    }
+    const activityLog = path.join(cwd, ".ralph", "activity.log");
+    fs.mkdirSync(path.dirname(activityLog), { recursive: true });
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    fs.appendFileSync(activityLog, `[${stamp}] ${message}\n`);
+    process.exit(0);
+  }
+
+  if (cmd === "prd") {
+    let request = args.slice(1).join(" ").trim();
+    if (!request) {
+      const { intro, outro, text, isCancel } = await import("@clack/prompts");
+      intro("Ralph PRD");
+      const response = await text({
+        message: "Describe the feature you want a PRD for",
+        placeholder: "Example: A lightweight uptime monitor with email alerts",
+      });
+      if (isCancel(response)) {
+        outro("Cancelled.");
+        process.exit(0);
+      }
+      request = String(response || "").trim();
+      if (!request) {
+        outro("No description provided.");
+        process.exit(1);
+      }
+      outro("Generating PRD...");
     }
     const requestFile = path.join(os.tmpdir(), `ralph-prd-${Date.now()}.md`);
     fs.writeFileSync(requestFile, `${request}\n`);
+    const agentName = agentOverride || defaultAgent;
+    const prdAgent = agentInteractiveMap[agentName] || agentMap[agentName];
+    if (prdAgent) {
+      env.PRD_AGENT_CMD = prdAgent;
+    }
     const prdArgs = ["prd", "--prompt", requestFile];
     const result = spawnSync(loopPath, prdArgs, {
       stdio: "inherit",

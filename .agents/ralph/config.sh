@@ -13,7 +13,10 @@
 # GUARDRAILS_REF=".agents/ralph/references/GUARDRAILS.md"
 # CONTEXT_REF=".agents/ralph/references/CONTEXT_ENGINEERING.md"
 # ACTIVITY_CMD=".agents/ralph/log-activity.sh"
-# AGENT_CMD="codex exec --yolo -"
+# AGENT_CMD defaults are defined in agents.sh. Override here if needed.
+# AGENT_CMD="codex exec --yolo --skip-git-repo-check -"
+# PRD_AGENT_CMD defaults are defined in agents.sh (interactive).
+# PRD_AGENT_CMD="codex --yolo --skip-git-repo-check {prompt}"
 # AGENT_CMD="claude -p --dangerously-skip-permissions \"$(cat {prompt})\""
 # AGENT_CMD="droid exec --skip-permissions-unsafe -f {prompt}"
 # AGENTS_PATH="AGENTS.md"
