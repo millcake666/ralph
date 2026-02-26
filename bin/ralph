@@ -3,6 +3,7 @@ const { spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const readline = require("readline");
 
 const rawArgs = process.argv.slice(2);
 const args = [];
@@ -104,6 +105,27 @@ function findPrdCandidates(baseDir) {
 
 function defaultPrdOutputPath(baseDir, request) {
   return path.join(baseDir, ".agents", "tasks");
+}
+
+function promptForPrdRequest() {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      rl.close();
+      resolve(result);
+    };
+    rl.on("SIGINT", () => finish({ cancelled: true, value: "" }));
+    process.stdout.write("Ralph PRD\n");
+    process.stdout.write("Describe the feature you want a PRD for\n");
+    process.stdout.write("Example: A lightweight uptime monitor with email alerts\n");
+    rl.question("> ", (answer) => finish({ cancelled: false, value: answer }));
+  });
 }
 
 async function resolvePrdPath({ cwd, explicitPath, label }) {
@@ -501,22 +523,17 @@ async function main() {
   if (cmd === "prd") {
     let request = args.slice(1).join(" ").trim();
     if (!request) {
-      const { intro, outro, text, isCancel } = await import("@clack/prompts");
-      intro("Ralph PRD");
-      const response = await text({
-        message: "Describe the feature you want a PRD for",
-        placeholder: "Example: A lightweight uptime monitor with email alerts",
-      });
-      if (isCancel(response)) {
-        outro("Cancelled.");
+      const response = await promptForPrdRequest();
+      if (response.cancelled) {
+        console.log("Cancelled.");
         process.exit(0);
       }
-      request = String(response || "").trim();
-      if (!request) {
-        outro("No description provided.");
+      request = String(response.value || "");
+      if (!request.trim()) {
+        console.error("No description provided.");
         process.exit(1);
       }
-      outro("Generating PRD...");
+      console.log("Generating PRD...");
     }
     const requestFile = path.join(os.tmpdir(), `ralph-prd-${Date.now()}.md`);
     fs.writeFileSync(requestFile, `${request}\n`);
