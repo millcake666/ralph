@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-02-26 16:47:56 | run=20260226-162701-90447 | iter=2 | mode=build | story=US-002 | duration=579s | status=success
 - 2026-02-26 16:38:14 | run=20260226-162701-90447 | iter=1 | mode=build | story=US-001 | duration=673s | status=success
 
 ## Events
@@ -16,3 +17,8 @@
 [2026-02-26 16:43:57] US-002 test fixture update: mocked PRD loop now writes JSON for qwen save-confirmation guard
 [2026-02-26 16:44:23] US-002 verification complete: npm test PASS; npm run test:ping FAIL on claude ping sentinel
 [2026-02-26 16:46:29] US-002 progress entry appended with commit and verification details
+[2026-02-26 16:47:56] ITERATION 2 end (duration=579s)
+[2026-02-26 16:47:58] ITERATION 3 start (mode=build story=US-003)
+[2026-02-26 16:48:23] Start US-003 iteration 3: auditing guardrails, errors, and PRD context before test changes
+[2026-02-26 16:50:51] US-003: added deterministic qwen interview regression tests (success + failure) and wired npm test
+[2026-02-26 17:09:49] US-003 verification: npm test PASS; npm run test:ping FAIL (claude ping missing <end>pong</end>)
