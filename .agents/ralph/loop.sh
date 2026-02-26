@@ -165,7 +165,13 @@ run_agent_inline() {
   else
     cmd="$cmd '$escaped'"
   fi
-  eval "$cmd"
+  
+  # For Qwen interactive mode, use exec to preserve TTY
+  if [[ "$cmd" == qwen* ]] && [[ -t 0 ]] && [[ -t 1 ]]; then
+    exec $cmd
+  else
+    eval "$cmd"
+  fi
 }
 
 MODE="build"

@@ -179,8 +179,60 @@ function printQwenPrdTroubleshooting(outputPath) {
   console.error("- Verify your qwen CLI supports interactive interview mode.");
 }
 
-function promptForPrdRequest() {
+function promptForPrdRequest({ useQwenInteractive = false } = {}) {
   return new Promise((resolve) => {
+    // For Qwen interactive mode, use raw stdin to support Ctrl+J and full TTY
+    if (useQwenInteractive && process.stdin.isTTY && process.stdout.isTTY) {
+      process.stdout.write("Ralph PRD\n");
+      process.stdout.write("Describe the feature you want a PRD for\n");
+      process.stdout.write("Example: A lightweight uptime monitor with email alerts\n");
+      process.stdout.write("> ");
+
+      const chunks = [];
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        resolve(result);
+      };
+
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.on("data", (chunk) => {
+        const char = chunk.toString();
+        // Ctrl+J (newline) or Enter
+        if (char === "\n" || char === "\r" || char === "\u000A") {
+          const text = Buffer.concat(chunks).toString("utf-8").trim();
+          if (text) {
+            process.stdout.write("\n");
+            finish({ cancelled: false, value: text });
+          }
+        } else if (char === "\u0003") {
+          // Ctrl+C
+          process.stdout.write("\n");
+          finish({ cancelled: true, value: "" });
+        } else if (char === "\u0004") {
+          // Ctrl+D
+          process.stdout.write("\n");
+          finish({ cancelled: true, value: "" });
+        } else if (char === "\u007F" || char === "\b") {
+          // Backspace
+          if (chunks.length > 0) {
+            chunks.pop();
+            process.stdout.write("\r\u001B[K");
+            process.stdout.write("> " + Buffer.concat(chunks).toString("utf-8"));
+          }
+        } else {
+          chunks.push(chunk);
+          process.stdout.write(char);
+        }
+      });
+      return;
+    }
+
+    // Fallback to readline for non-interactive or non-Qwen modes
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -594,8 +646,13 @@ async function main() {
 
   if (cmd === "prd") {
     let request = args.slice(1).join(" ").trim();
+    const agentName = agentOverride || defaultAgent;
+    const interactiveTerminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    const isQwen = agentName === "qwen";
+
     if (!request) {
-      const response = await promptForPrdRequest();
+      // Use Qwen interactive mode for better Ctrl+J support
+      const response = await promptForPrdRequest({ useQwenInteractive: isQwen });
       if (response.cancelled) {
         console.log("Cancelled.");
         process.exit(0);
@@ -609,8 +666,6 @@ async function main() {
     }
     const requestFile = path.join(os.tmpdir(), `ralph-prd-${Date.now()}.md`);
     fs.writeFileSync(requestFile, `${request}\n`);
-    const agentName = agentOverride || defaultAgent;
-    const interactiveTerminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
     const outputPath = prdOutPath || prdPath || defaultPrdOutputPath(cwd, request);
     const resolvedOutputPath = path.resolve(cwd, outputPath);
     env.PRD_PATH = resolvedOutputPath;
@@ -620,7 +675,7 @@ async function main() {
     if (prdAgent) {
       env.PRD_AGENT_CMD = prdAgent;
     }
-    const requireQwenSaveConfirmation = agentName === "qwen" && interactiveTerminal;
+    const requireQwenSaveConfirmation = isQwen && interactiveTerminal;
     const prdOutputSnapshot = requireQwenSaveConfirmation
       ? snapshotPrdOutputState(cwd, resolvedOutputPath)
       : null;
