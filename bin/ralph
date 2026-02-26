@@ -107,6 +107,78 @@ function defaultPrdOutputPath(baseDir, request) {
   return path.join(baseDir, ".agents", "tasks");
 }
 
+function collectJsonFiles(dirPath) {
+  const files = new Map();
+  if (!exists(dirPath)) {
+    return files;
+  }
+  for (const name of fs.readdirSync(dirPath)) {
+    if (!name.toLowerCase().endsWith(".json")) continue;
+    const filePath = path.join(dirPath, name);
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) continue;
+      files.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size });
+    } catch {
+      // Skip files that disappear during scan.
+    }
+  }
+  return files;
+}
+
+function snapshotPrdOutputState(baseDir, outputPath) {
+  const resolved = path.resolve(baseDir, outputPath);
+  if (resolved.toLowerCase().endsWith(".json")) {
+    try {
+      const stat = fs.statSync(resolved);
+      return {
+        kind: "file",
+        path: resolved,
+        existed: stat.isFile(),
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+      };
+    } catch {
+      return { kind: "file", path: resolved, existed: false, mtimeMs: 0, size: 0 };
+    }
+  }
+  return { kind: "dir", path: resolved, files: collectJsonFiles(resolved) };
+}
+
+function hasPrdSaveConfirmation(snapshot) {
+  if (!snapshot) return false;
+  if (snapshot.kind === "file") {
+    try {
+      const stat = fs.statSync(snapshot.path);
+      if (!stat.isFile() || stat.size <= 0) return false;
+      if (!snapshot.existed) return true;
+      return stat.size !== snapshot.size || stat.mtimeMs > snapshot.mtimeMs;
+    } catch {
+      return false;
+    }
+  }
+
+  const current = collectJsonFiles(snapshot.path);
+  if (current.size > snapshot.files.size) return true;
+  for (const [filePath, stat] of current.entries()) {
+    const previous = snapshot.files.get(filePath);
+    if (!previous) return true;
+    if (stat.size !== previous.size || stat.mtimeMs > previous.mtimeMs) return true;
+  }
+  return false;
+}
+
+function printQwenPrdTroubleshooting(outputPath) {
+  console.error("Qwen PRD session ended before PRD save confirmation.");
+  console.error("Troubleshooting:");
+  console.error("- Stay in the same interactive terminal and answer every follow-up question.");
+  console.error(`- Ensure the output path is writable: ${outputPath}`);
+  console.error(
+    "- Retry with explicit output: ralph prd --agent qwen --out .agents/tasks/prd-<name>.json",
+  );
+  console.error("- Verify your qwen CLI supports interactive interview mode.");
+}
+
 function promptForPrdRequest() {
   return new Promise((resolve) => {
     const rl = readline.createInterface({
@@ -537,19 +609,35 @@ async function main() {
     }
     const requestFile = path.join(os.tmpdir(), `ralph-prd-${Date.now()}.md`);
     fs.writeFileSync(requestFile, `${request}\n`);
-    const outputPath = prdOutPath || prdPath || defaultPrdOutputPath(cwd, request);
-    env.PRD_PATH = outputPath;
     const agentName = agentOverride || defaultAgent;
-    const prdAgent = agentInteractiveMap[agentName] || agentMap[agentName];
+    const interactiveTerminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    const outputPath = prdOutPath || prdPath || defaultPrdOutputPath(cwd, request);
+    const resolvedOutputPath = path.resolve(cwd, outputPath);
+    env.PRD_PATH = resolvedOutputPath;
+    const prdAgent = interactiveTerminal
+      ? agentInteractiveMap[agentName] || agentMap[agentName]
+      : agentMap[agentName] || agentInteractiveMap[agentName];
     if (prdAgent) {
       env.PRD_AGENT_CMD = prdAgent;
     }
+    const requireQwenSaveConfirmation = agentName === "qwen" && interactiveTerminal;
+    const prdOutputSnapshot = requireQwenSaveConfirmation
+      ? snapshotPrdOutputState(cwd, resolvedOutputPath)
+      : null;
     const prdArgs = ["prd", "--prompt", requestFile];
     const result = spawnSync(loopPath, prdArgs, {
       stdio: "inherit",
       env,
     });
-    process.exit(result.status ?? 1);
+    const status = result.status ?? 1;
+    if (status !== 0) {
+      process.exit(status);
+    }
+    if (requireQwenSaveConfirmation && !hasPrdSaveConfirmation(prdOutputSnapshot)) {
+      printQwenPrdTroubleshooting(resolvedOutputPath);
+      process.exit(1);
+    }
+    process.exit(0);
   }
 
   if (cmd === "overview") {

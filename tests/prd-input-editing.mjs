@@ -63,6 +63,15 @@ printf '%s\\n' "$((count + 1))" > "$count_file"
 
 if [[ "\${1:-}" == "prd" && "\${2:-}" == "--prompt" && -n "\${3:-}" ]]; then
   cat "$3" > "$root/.ralph/captured-request.txt"
+  mkdir -p "$root/.agents/tasks"
+  cat > "$root/.agents/tasks/prd-test.json" <<'JSON'
+{
+  "version": 1,
+  "project": "test",
+  "qualityGates": [],
+  "stories": []
+}
+JSON
 fi
 `,
     "utf-8",
