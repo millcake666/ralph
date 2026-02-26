@@ -14,12 +14,46 @@ Ralph treats **files and git** as memory, not the model context:
 
 ![Ralph architecture](diagram.svg)
 
-## Global CLI (recommended)
+## Installation
 
-Install and run Ralph from anywhere:
+### Quick Install (Recommended)
 
 ```bash
-npm i -g @iannuttall/ralph
+curl -sL https://raw.githubusercontent.com/millcake666/ralph/main/install.sh | sh
+```
+
+This will:
+- Detect your OS (Linux/macOS) and architecture
+- Install Ralph globally via npm
+- Make `ralph` available from anywhere
+
+### Alternative: Install from GitHub
+
+```bash
+npm install -g github:millcake666/ralph
+```
+
+### Alternative: Install from npm
+
+```bash
+npm install -g @iannuttall/ralph
+```
+
+### Update Ralph
+
+```bash
+# If installed via install.sh or npm
+npm update -g @iannuttall/ralph
+
+# If installed from GitHub
+npm install -g github:millcake666/ralph
+```
+
+## Global CLI (recommended)
+
+Once installed, run Ralph from anywhere:
+
+```bash
 ralph prd # launches an interactive prompt
 ralph build 1 # one Ralph run
 ```
