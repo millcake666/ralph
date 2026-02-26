@@ -64,7 +64,7 @@ Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-
   - `npm run test:ping` can fail in local environments where a detected agent CLI is installed but does not return the expected ping sentinel.
 ---
 ## [2026-02-26 17:12:56 +0500] - US-003: Add regression tests for PRD interview behavior
-Thread: 
+Thread:
 Run: 20260226-162701-90447 (iteration 3)
 Run log: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-90447-iter-3.log
 Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-90447-iter-3.md
@@ -92,4 +92,36 @@ Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-
   - In expect scripts, sending Enter must use an actual `"\\r"` send step; embedding escaped carriage returns into quoted payload strings can leave readline waiting.
   - Useful context
   - `npm run test:ping` may fail in environments where an installed agent binary exists but does not return the expected `<end>pong</end>` sentinel.
+---
+## [2026-02-26 17:14:07 +0500] - US-003: Add regression tests for PRD interview behavior
+Thread:
+Run: 20260226-171407-6642 (iteration 1)
+Run log: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-171407-6642-iter-1.log
+Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-171407-6642-iter-1.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 48c3b9d chore(activity): log US-003 verification run
+- Post-commit status: clean
+- Verification:
+  - Command: npm test -> PASS
+  - Command: npm run test:ping -> FAIL (unrelated: claude ping sentinel mismatch)
+- Files changed:
+  - .ralph/activity.log (updated)
+  - .ralph/progress.md (updated)
+- What was implemented
+  - Verified US-003 acceptance criteria already complete from previous iteration (commit 4582536).
+  - Confirmed `tests/prd-interview-regression.mjs` covers all acceptance criteria:
+    - Deterministic mocked agent command for interactive qwen PRD flow.
+    - Request input capture validation.
+    - Two clarifying questions with two answers (back-and-forth interaction).
+    - Success case: mock qwen asks two questions, receives answers, emits save message, exits zero.
+    - Negative case: mock qwen exits after questions without save, test asserts non-zero exit and troubleshooting output.
+  - All tests passing via `npm test`.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - US-003 implementation already complete; no additional work required.
+  - Gotchas encountered
+  - None.
+  - Useful context
+  - `npm run test:ping` failure is unrelated to US-003 (claude agent returns unexpected output).
 ---
