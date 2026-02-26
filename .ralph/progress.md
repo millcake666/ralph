@@ -63,3 +63,33 @@ Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-
   - Useful context
   - `npm run test:ping` can fail in local environments where a detected agent CLI is installed but does not return the expected ping sentinel.
 ---
+## [2026-02-26 17:12:56 +0500] - US-003: Add regression tests for PRD interview behavior
+Thread: 
+Run: 20260226-162701-90447 (iteration 3)
+Run log: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-90447-iter-3.log
+Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-90447-iter-3.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 4582536 test(prd): add qwen interview regression tests
+- Post-commit status: .agents/ralph/README.md, .agents/ralph/diagram.svg, .agents/ralph/ralph.webp, .agents/tasks/, .idea/
+- Verification:
+  - Command: npm test -> PASS
+  - Command: npm run test:ping -> FAIL
+- Files changed:
+  - package.json
+  - tests/prd-interview-regression.mjs
+  - .ralph/activity.log
+  - .ralph/progress.md
+- What was implemented
+  - Added deterministic interactive regression coverage for qwen PRD interview mode using a mocked agent command under pseudo-TTY.
+  - Added success-case assertions for initial request capture, two clarifying questions with two answers, final save message, PRD output creation, and zero exit.
+  - Added negative-case assertions where qwen exits after questions without saving, ensuring non-zero exit and clear troubleshooting output.
+  - Wired the new regression suite into `npm test`.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Reusing the real `.agents/ralph/loop.sh` with a mocked qwen command gives high-confidence interview-flow coverage without external dependencies.
+  - Gotchas encountered
+  - In expect scripts, sending Enter must use an actual `"\\r"` send step; embedding escaped carriage returns into quoted payload strings can leave readline waiting.
+  - Useful context
+  - `npm run test:ping` may fail in environments where an installed agent binary exists but does not return the expected `<end>pong</end>` sentinel.
+---
