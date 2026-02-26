@@ -57,6 +57,9 @@ resolve_agent_cmd() {
     droid)
       echo "${AGENT_DROID_CMD:-droid exec --skip-permissions-unsafe -f {prompt}}"
       ;;
+    qwen)
+      echo "${AGENT_QWEN_CMD:-qwen exec --yolo -}"
+      ;;
     codex|"")
       echo "${AGENT_CODEX_CMD:-codex exec --yolo --skip-git-repo-check -}"
       ;;
@@ -128,6 +131,9 @@ require_agent() {
         ;;
       opencode)
         echo "Install: curl -fsSL https://opencode.ai/install.sh | bash"
+        ;;
+      qwen)
+        echo "Install: Follow instructions at https://qwen.ai"
         ;;
     esac
     echo "Then authenticate per the CLI's instructions."

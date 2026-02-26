@@ -83,7 +83,7 @@ Options:
   --prd <path>                        Override PRD path
   --out <path>                        Override PRD output path (prd command)
   --progress <path>                   Override progress log path
-  --agent <codex|claude|droid|opencode>  Override agent runner
+  --agent <codex|claude|droid|opencode|qwen>  Override agent runner
 
 Notes:
 - Uses local .agents/ralph if present; otherwise uses bundled defaults.
@@ -200,6 +200,7 @@ async function runInstallSkills() {
       { value: "claude", label: "claude" },
       { value: "droid", label: "droid" },
       { value: "opencode", label: "opencode" },
+      { value: "qwen", label: "qwen" },
     ],
     initialValue: agentOverride || "codex",
   });
@@ -235,9 +236,13 @@ async function runInstallSkills() {
           ? scope === "global"
             ? path.join(home, ".factory", "skills")
             : path.join(cwd, ".factory", "skills")
-          : scope === "global"
-            ? path.join(home, ".local", "share", "opencode", "skills")
-            : path.join(cwd, ".opencode", "skills");
+          : agent === "qwen"
+            ? scope === "global"
+              ? path.join(home, ".qwen", "skills")
+              : path.join(cwd, ".qwen", "skills")
+            : scope === "global"
+              ? path.join(home, ".local", "share", "opencode", "skills")
+              : path.join(cwd, ".opencode", "skills");
 
   const skillsToInstall = ["commit", "dev-browser", "prd"];
   fs.mkdirSync(targetRoot, { recursive: true });
@@ -354,12 +359,14 @@ async function main() {
       claude: "claude -p --dangerously-skip-permissions \"$(cat {prompt})\"",
       droid: "droid exec --skip-permissions-unsafe -f {prompt}",
       opencode: "opencode run \"$(cat {prompt})\"",
+      qwen: "qwen exec --yolo -",
     };
     const interactiveDefaults = {
       codex: "codex --yolo {prompt}",
       claude: "claude --dangerously-skip-permissions {prompt}",
       droid: "droid --skip-permissions-unsafe {prompt}",
       opencode: "opencode --prompt {prompt}",
+      qwen: "qwen {prompt}",
     };
     const agentsPath = path.join(templateDir, "agents.sh");
     if (!exists(agentsPath)) {
@@ -377,10 +384,12 @@ async function main() {
       'printf "AGENT_CLAUDE_CMD=%s\\n" "${AGENT_CLAUDE_CMD:-}"',
       'printf "AGENT_DROID_CMD=%s\\n" "${AGENT_DROID_CMD:-}"',
       'printf "AGENT_OPENCODE_CMD=%s\\n" "${AGENT_OPENCODE_CMD:-}"',
+      'printf "AGENT_QWEN_CMD=%s\\n" "${AGENT_QWEN_CMD:-}"',
       'printf "AGENT_CODEX_INTERACTIVE_CMD=%s\\n" "${AGENT_CODEX_INTERACTIVE_CMD:-}"',
       'printf "AGENT_CLAUDE_INTERACTIVE_CMD=%s\\n" "${AGENT_CLAUDE_INTERACTIVE_CMD:-}"',
       'printf "AGENT_DROID_INTERACTIVE_CMD=%s\\n" "${AGENT_DROID_INTERACTIVE_CMD:-}"',
       'printf "AGENT_OPENCODE_INTERACTIVE_CMD=%s\\n" "${AGENT_OPENCODE_INTERACTIVE_CMD:-}"',
+      'printf "AGENT_QWEN_INTERACTIVE_CMD=%s\\n" "${AGENT_QWEN_INTERACTIVE_CMD:-}"',
     ].join("; ");
     const result = spawnSync("bash", ["-lc", bashCmd], { encoding: "utf-8" });
     if (result.status !== 0) {
@@ -404,12 +413,14 @@ async function main() {
         claude: readVar("AGENT_CLAUDE_CMD") || defaults.claude,
         droid: readVar("AGENT_DROID_CMD") || defaults.droid,
         opencode: readVar("AGENT_OPENCODE_CMD") || defaults.opencode,
+        qwen: readVar("AGENT_QWEN_CMD") || defaults.qwen,
       },
       interactive: {
         codex: readVar("AGENT_CODEX_INTERACTIVE_CMD") || interactiveDefaults.codex,
         claude: readVar("AGENT_CLAUDE_INTERACTIVE_CMD") || interactiveDefaults.claude,
         droid: readVar("AGENT_DROID_INTERACTIVE_CMD") || interactiveDefaults.droid,
         opencode: readVar("AGENT_OPENCODE_INTERACTIVE_CMD") || interactiveDefaults.opencode,
+        qwen: readVar("AGENT_QWEN_INTERACTIVE_CMD") || interactiveDefaults.qwen,
       },
       defaultAgent: readVar("DEFAULT_AGENT") || "codex",
     };
@@ -422,7 +433,7 @@ async function main() {
     const mapped = agentMap[agentOverride];
     if (!mapped) {
       console.error(`Unknown agent: ${agentOverride}`);
-      console.error("Valid values: codex, claude, droid, opencode");
+      console.error("Valid values: codex, claude, droid, opencode, qwen");
       process.exit(1);
     }
     process.env.AGENT_CMD = mapped;

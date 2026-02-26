@@ -47,7 +47,7 @@ This creates `.agents/ralph/` in the current repo so you can customize prompts a
 ralph install --skills
 ```
 
-You’ll be prompted for agent (codex/claude/droid/opencode) and local vs global install. Skills installed: **commit**, **dev-browser**, **prd**.
+You'll be prompted for agent (codex/claude/droid/opencode/qwen) and local vs global install. Skills installed: **commit**, **dev-browser**, **prd**.
 If you skipped skills during `ralph install`, you can run `ralph install --skills` anytime.
 
 ## Quick start (project)
@@ -126,6 +126,7 @@ AGENT_CMD="codex exec --yolo -"
 AGENT_CMD="claude -p --dangerously-skip-permissions \"\$(cat {prompt})\""
 AGENT_CMD="droid exec --skip-permissions-unsafe -f {prompt}"
 AGENT_CMD="opencode run \"$(cat {prompt})\""
+AGENT_CMD="qwen exec --yolo -"
 ```
 
 Or override per run:
@@ -136,15 +137,17 @@ ralph build 1 --agent=codex # one Ralph run
 ralph build 1 --agent=claude # one Ralph run
 ralph build 1 --agent=droid # one Ralph run
 ralph build 1 --agent=opencode # one Ralph run
+ralph build 1 --agent=qwen # one Ralph run
 ```
 
-If the CLI isn’t installed, Ralph prints install hints:
+If the CLI isn't installed, Ralph prints install hints:
 
 ```
 codex    -> npm i -g @openai/codex
 claude   -> curl -fsSL https://claude.ai/install.sh | bash
 droid    -> curl -fsSL https://app.factory.ai/cli | sh
 opencode -> curl -fsSL https://opencode.ai/install.sh | bash
+qwen     -> Follow instructions at https://qwen.ai
 ```
 
 ## State files (.ralph/)
