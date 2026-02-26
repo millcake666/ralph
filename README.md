@@ -107,6 +107,173 @@ Default output (agent chooses a short filename in `.agents/tasks/`):
 ralph build 1 # one Ralph run
 ```
 
+## PRD Command: Interactive Flow
+
+### `ralph prd --agent qwen`
+
+The PRD command launches an interactive prompt that collects your feature request and invokes an agent to generate a Product Requirements Document (PRD) in JSON format.
+
+**Expected Flow:**
+
+1. **Request Input**: You'll see a prompt:
+   ```
+   Ralph PRD
+   Describe the feature you want a PRD for
+   Example: A lightweight uptime monitor with email alerts
+   > 
+   ```
+
+2. **Edit Before Submit**: Type your request. You can:
+   - Use arrow keys to move the cursor
+   - Use backspace/delete to edit text
+   - Press Enter to submit when ready
+
+3. **Agent Interview** (qwen interactive mode): The agent may ask clarifying questions:
+   ```
+   Question 1: Who is the primary user?
+   > [your answer]
+   Question 2: What is the deadline?
+   > [your answer]
+   ```
+
+4. **PRD Generation**: After the interview, the agent writes the PRD JSON and displays:
+   ```
+   PRD JSON saved to .agents/tasks/prd-<name>.json
+   Close this chat and run `ralph build`.
+   ```
+
+**Working Command Example:**
+
+```bash
+ralph prd --agent qwen
+```
+
+**Expected Interview Sequence:**
+
+```
+$ ralph prd --agent qwen
+Ralph PRD
+Describe the feature you want a PRD for
+Example: A lightweight uptime monitor with email alerts
+> Incident workflow dashboard for operations
+
+Question 1: Who is the primary user?
+> Ops team leads
+
+Question 2: What is the deadline?
+> End of Q2
+
+PRD JSON saved to .agents/tasks/prd-incident.json
+Close this chat and run `ralph build`.
+```
+
+### Request Input Editing Behavior
+
+The interactive prompt uses Node.js `readline` module with full TTY support:
+
+- **Cursor Movement**: Left/right arrows move the cursor within the input line
+- **Text Editing**: Backspace deletes characters; you can insert text at any position
+- **Submit**: Press Enter to submit the final edited text
+- **Cancel**: Press Ctrl+C to abort (exits with cancellation message)
+
+The captured request is the **final edited text** after all modifications, not the initial typing.
+
+## Troubleshooting
+
+### Premature Exit (Qwen Interview Mode)
+
+If the qwen agent exits before saving the PRD, you'll see:
+
+```
+Qwen PRD session ended before PRD save confirmation.
+Troubleshooting:
+- Stay in the same interactive terminal and answer every follow-up question.
+- Ensure the output path is writable: .agents/tasks/
+- Retry with explicit output: ralph prd --agent qwen --out .agents/tasks/prd-<name>.json
+- Verify your qwen CLI supports interactive interview mode.
+```
+
+**Common Causes:**
+
+1. **Non-Interactive Terminal**: The agent requires stdin/stdout to be a TTY (interactive terminal).
+2. **Piped Input**: Interview mode does **not** work when input is piped or redirected.
+3. **Agent Configuration**: Your `AGENT_QWEN_INTERACTIVE_CMD` may not support interactive mode.
+4. **Shell Context**: Running in a subshell, CI/CD, or automated script without TTY allocation.
+
+### TTY Checks
+
+The `ralph prd` command automatically detects interactive terminal mode:
+
+```javascript
+const interactiveTerminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+```
+
+- **Interactive (TTY)**: Uses `AGENT_*_INTERACTIVE_CMD` for two-way dialogue
+- **Non-Interactive (Pipe/Redirect)**: Uses `AGENT_*_CMD` for one-shot execution
+
+**Verify your terminal is interactive:**
+
+```bash
+# Should print "1" if interactive
+test -t 0 && echo 1 || echo 0
+```
+
+### Command Override
+
+Override the agent command in `.agents/ralph/config.sh`:
+
+```bash
+# Interactive mode (recommended for qwen PRD)
+AGENT_QWEN_INTERACTIVE_CMD="qwen {prompt}"
+
+# Headless mode (no interview, one-shot PRD)
+AGENT_QWEN_CMD="qwen exec --yolo -"
+```
+
+Or per-run override:
+
+```bash
+ralph prd --agent=qwen
+```
+
+### Non-Interactive stdin Limitations
+
+**Important**: The PRD interview flow **requires** an interactive terminal.
+
+**Does NOT work with:**
+
+```bash
+# Piped input - interview mode disabled
+echo "my feature request" | ralph prd --agent qwen
+
+# Redirected input - interview mode disabled
+ralph prd --agent qwen < request.txt
+
+# CI/CD without TTY allocation
+# Subshells without TTY
+```
+
+**Why?** When stdin is not a TTY:
+- The `readline` prompt cannot capture interactive input
+- The agent cannot ask clarifying questions and wait for answers
+- Ralph falls back to headless mode (if configured) or fails fast
+
+**Workarounds for Automation:**
+
+1. Use `--prompt` file mode instead of interactive input
+2. Configure a headless agent command that doesn't require interview
+3. Allocate TTY in CI/CD (e.g., `docker run -t`, `script -q /dev/null`)
+
+### Empty Input Validation
+
+If you press Enter without typing a request:
+
+```
+No description provided.
+```
+
+The command exits with a non-zero code and does **not** invoke the agent.
+
 No‑commit dry run:
 ```
 ralph build 1 --no-commit # one Ralph run
