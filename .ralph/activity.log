@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-02-26 16:38:14 | run=20260226-162701-90447 | iter=1 | mode=build | story=US-001 | duration=673s | status=success
 
 ## Events
 
@@ -9,3 +10,9 @@
 [2026-02-26 16:31:41] Implemented US-001 code changes: readline PRD input + interactive regression test
 [2026-02-26 16:34:07] Verification complete for US-001: npm test PASS, npm run test:ping FAIL (claude ping output mismatch)
 [2026-02-26 16:36:25] Updated progress log entry for US-001 with commit and verification details
+[2026-02-26 16:38:14] ITERATION 1 end (duration=673s)
+[2026-02-26 16:38:17] ITERATION 2 start (mode=build story=US-002)
+[2026-02-26 16:42:03] US-002 major code change: add qwen interactive PRD save-confirmation guard in bin/ralph
+[2026-02-26 16:43:57] US-002 test fixture update: mocked PRD loop now writes JSON for qwen save-confirmation guard
+[2026-02-26 16:44:23] US-002 verification complete: npm test PASS; npm run test:ping FAIL on claude ping sentinel
+[2026-02-26 16:46:29] US-002 progress entry appended with commit and verification details

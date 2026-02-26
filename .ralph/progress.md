@@ -34,3 +34,32 @@ Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-
   - Useful context
   - Set `RALPH_SKIP_UPDATE_CHECK=1` for interactive CLI tests to avoid update-check prompts interfering with deterministic input flows.
 ---
+## [2026-02-26 16:46:08 +0500] - US-002: Keep qwen PRD interview session interactive
+Thread: 
+Run: 20260226-162701-90447 (iteration 2)
+Run log: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-90447-iter-2.log
+Run summary: /Users/kamaliev/pet-projects/ralph/.ralph/runs/run-20260226-162701-90447-iter-2.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 195abc3 fix(prd): keep qwen PRD interview interactive
+- Post-commit status: .agents/ralph/README.md, .agents/ralph/diagram.svg, .agents/ralph/ralph.webp, .agents/tasks/, .idea/
+- Verification:
+  - Command: npm test -> PASS
+  - Command: npm run test:ping -> FAIL
+- Files changed:
+  - bin/ralph
+  - tests/prd-input-editing.mjs
+  - .ralph/activity.log
+  - .ralph/progress.md
+- What was implemented
+  - Added a qwen PRD interactive-session guard that keeps TTY invocation for dialogue and then validates that a PRD JSON file was created or updated before returning success.
+  - Added actionable troubleshooting guidance and non-zero exit when qwen exits early without producing a saved PRD artifact.
+  - Updated the pseudo-TTY PRD input fixture to emit a mock PRD JSON file so existing interactive input tests stay aligned with the new qwen save-confirmation contract.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - PRD-mode success checks can be enforced at the CLI boundary by snapshotting output paths before and after agent execution.
+  - Gotchas encountered
+  - Existing tests with mocked PRD loops must create/update expected output artifacts once save-confirmation checks are introduced.
+  - Useful context
+  - `npm run test:ping` can fail in local environments where a detected agent CLI is installed but does not return the expected ping sentinel.
+---
