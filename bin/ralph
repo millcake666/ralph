@@ -181,58 +181,249 @@ function printQwenPrdTroubleshooting(outputPath) {
 
 function promptForPrdRequest({ useQwenInteractive = false } = {}) {
   return new Promise((resolve) => {
-    // For Qwen interactive mode, use raw stdin to support Ctrl+J and full TTY
-    if (useQwenInteractive && process.stdin.isTTY && process.stdout.isTTY) {
-      process.stdout.write("Ralph PRD\n");
-      process.stdout.write("Describe the feature you want a PRD for\n");
-      process.stdout.write("Example: A lightweight uptime monitor with email alerts\n");
-      process.stdout.write("> ");
-
-      const chunks = [];
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      const { StringDecoder } = require("string_decoder");
+      const promptPrefix = "\u001B[32m>\u001B[0m ";
+      const textChars = [];
+      const utf8Decoder = new StringDecoder("utf8");
+      const ESC = 27;
+      const ENTER = 13;
+      const NEWLINE = 10;
+      const BACKSPACE = 8;
+      const DELETE = 127;
+      const ESCAPE_TIMEOUT_MS = 60;
+      let cursorIndex = 0;
+      let renderedLineCount = 1;
+      let pendingTextBytes = [];
+      let escapeBytes = null;
+      let escapeTimeout = null;
       let settled = false;
+
+      process.stdout.write("\n");
+      process.stdout.write("\u001B[1;36mRalph PRD\u001B[0m\n");
+      process.stdout.write("\u001B[90mDescribe the feature you want a PRD for\u001B[0m\n");
+      process.stdout.write("\u001B[90mExample: A lightweight uptime monitor with email alerts\u001B[0m\n");
+      process.stdout.write("\u001B[90mPress \u001B[1mOption+Enter\u001B[0m\u001B[90m for new line, \u001B[1mEnter\u001B[0m\u001B[90m to submit\u001B[0m\n");
+      process.stdout.write(`\n${promptPrefix}`);
+
+      const clearEscapeTimeout = () => {
+        if (!escapeTimeout) return;
+        clearTimeout(escapeTimeout);
+        escapeTimeout = null;
+      };
+
+      const resetEscape = () => {
+        clearEscapeTimeout();
+        escapeBytes = null;
+      };
+
+      const scheduleEscapeTimeout = () => {
+        clearEscapeTimeout();
+        escapeTimeout = setTimeout(() => {
+          escapeBytes = null;
+          escapeTimeout = null;
+        }, ESCAPE_TIMEOUT_MS);
+      };
+
+      const insertText = (value) => {
+        if (!value) return false;
+        const chars = Array.from(value);
+        if (chars.length === 0) return false;
+        textChars.splice(cursorIndex, 0, ...chars);
+        cursorIndex += chars.length;
+        return true;
+      };
+
+      const clearRenderedPrompt = () => {
+        process.stdout.write("\r\u001B[K");
+        for (let i = 1; i < renderedLineCount; i += 1) {
+          process.stdout.write("\u001B[1A\r\u001B[K");
+        }
+      };
+
+      const renderPrompt = () => {
+        const fullText = textChars.join("");
+        const lines = fullText.split("\n");
+        clearRenderedPrompt();
+        for (let i = 0; i < lines.length; i += 1) {
+          if (i > 0) process.stdout.write("\n");
+          process.stdout.write(promptPrefix + lines[i]);
+        }
+        renderedLineCount = lines.length;
+        const beforeCursor = textChars.slice(0, cursorIndex).join("");
+        const cursorLines = beforeCursor.split("\n");
+        const cursorRow = cursorLines.length - 1;
+        const cursorCol = cursorLines[cursorLines.length - 1].length;
+        const lastRow = lines.length - 1;
+        const upLines = lastRow - cursorRow;
+        if (upLines > 0) {
+          process.stdout.write(`\u001B[${upLines}A`);
+        }
+        process.stdout.write("\r");
+        process.stdout.write(promptPrefix);
+        if (cursorCol > 0) {
+          process.stdout.write(`\u001B[${cursorCol}C`);
+        }
+      };
+
+      const flushPendingText = () => {
+        if (pendingTextBytes.length === 0) return false;
+        const decoded = utf8Decoder.write(Buffer.from(pendingTextBytes));
+        pendingTextBytes = [];
+        return insertText(decoded);
+      };
+
+      const applyAction = (action) => {
+        switch (action) {
+          case "metaEnter":
+            if (insertText("\n")) renderPrompt();
+            return true;
+          case "left":
+            if (cursorIndex > 0) {
+              cursorIndex -= 1;
+              renderPrompt();
+            }
+            return true;
+          case "right":
+            if (cursorIndex < textChars.length) {
+              cursorIndex += 1;
+              renderPrompt();
+            }
+            return true;
+          case "home":
+            if (cursorIndex !== 0) {
+              cursorIndex = 0;
+              renderPrompt();
+            }
+            return true;
+          case "end":
+            if (cursorIndex !== textChars.length) {
+              cursorIndex = textChars.length;
+              renderPrompt();
+            }
+            return true;
+          case "delete":
+            if (cursorIndex < textChars.length) {
+              textChars.splice(cursorIndex, 1);
+              renderPrompt();
+            }
+            return true;
+          default:
+            return false;
+        }
+      };
+
+      const parseEscape = (bytes) => {
+        if (!bytes || bytes.length === 0 || bytes[0] !== ESC) return { done: true, action: null };
+        if (bytes.length === 1) return { done: false, action: null };
+        const second = bytes[1];
+        if (second === ENTER || second === NEWLINE) return { done: true, action: "metaEnter" };
+        if (second === 91) {
+          if (bytes.length === 2) return { done: false, action: null };
+          const third = bytes[2];
+          if (third === 68) return { done: true, action: "left" };
+          if (third === 67) return { done: true, action: "right" };
+          if (third === 72) return { done: true, action: "home" };
+          if (third === 70) return { done: true, action: "end" };
+          if (third === 51) {
+            if (bytes.length === 3) return { done: false, action: null };
+            if (bytes[3] === 126) return { done: true, action: "delete" };
+            return { done: true, action: null };
+          }
+          if (third === 49 || third === 52) {
+            if (bytes.length === 3) return { done: false, action: null };
+            if (bytes[3] === 126) {
+              return { done: true, action: third === 49 ? "home" : "end" };
+            }
+            return { done: true, action: null };
+          }
+          return { done: true, action: null };
+        }
+        if (second === 79) {
+          if (bytes.length === 2) return { done: false, action: null };
+          const third = bytes[2];
+          if (third === 68) return { done: true, action: "left" };
+          if (third === 67) return { done: true, action: "right" };
+          if (third === 72) return { done: true, action: "home" };
+          if (third === 70) return { done: true, action: "end" };
+          return { done: true, action: null };
+        }
+        return { done: true, action: null };
+      };
+
+      const cleanup = () => {
+        process.stdin.off("data", onData);
+        resetEscape();
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.stdin.pause();
+      };
+
       const finish = (result) => {
         if (settled) return;
         settled = true;
-        process.stdin.setRawMode(false);
-        process.stdin.pause();
+        cleanup();
+        process.stdout.write("\n");
         resolve(result);
+      };
+
+      const onData = (chunk) => {
+        if (settled) return;
+        let shouldRender = false;
+        const bytes = chunk instanceof Buffer ? chunk : Buffer.from(chunk);
+        for (const byte of bytes) {
+          if (escapeBytes) {
+            escapeBytes.push(byte);
+            const parsed = parseEscape(escapeBytes);
+            if (!parsed.done) {
+              scheduleEscapeTimeout();
+              continue;
+            }
+            applyAction(parsed.action);
+            resetEscape();
+            continue;
+          }
+          if (byte === ESC) {
+            shouldRender = flushPendingText() || shouldRender;
+            escapeBytes = [ESC];
+            scheduleEscapeTimeout();
+            continue;
+          }
+          if (byte === 3) {
+            shouldRender = flushPendingText() || shouldRender;
+            if (shouldRender) renderPrompt();
+            finish({ cancelled: true, value: "" });
+            return;
+          }
+          if (byte === ENTER || byte === NEWLINE) {
+            shouldRender = flushPendingText() || shouldRender;
+            if (shouldRender) renderPrompt();
+            finish({ cancelled: false, value: textChars.join("") });
+            return;
+          }
+          if (byte === BACKSPACE || byte === DELETE) {
+            shouldRender = flushPendingText() || shouldRender;
+            if (cursorIndex > 0) {
+              textChars.splice(cursorIndex - 1, 1);
+              cursorIndex -= 1;
+              renderPrompt();
+            }
+            continue;
+          }
+          pendingTextBytes.push(byte);
+        }
+        shouldRender = flushPendingText() || shouldRender;
+        if (shouldRender) renderPrompt();
       };
 
       process.stdin.setRawMode(true);
       process.stdin.resume();
-      process.stdin.on("data", (chunk) => {
-        const char = chunk.toString();
-        // Ctrl+J (newline) or Enter
-        if (char === "\n" || char === "\r" || char === "\u000A") {
-          const text = Buffer.concat(chunks).toString("utf-8").trim();
-          if (text) {
-            process.stdout.write("\n");
-            finish({ cancelled: false, value: text });
-          }
-        } else if (char === "\u0003") {
-          // Ctrl+C
-          process.stdout.write("\n");
-          finish({ cancelled: true, value: "" });
-        } else if (char === "\u0004") {
-          // Ctrl+D
-          process.stdout.write("\n");
-          finish({ cancelled: true, value: "" });
-        } else if (char === "\u007F" || char === "\b") {
-          // Backspace
-          if (chunks.length > 0) {
-            chunks.pop();
-            process.stdout.write("\r\u001B[K");
-            process.stdout.write("> " + Buffer.concat(chunks).toString("utf-8"));
-          }
-        } else {
-          chunks.push(chunk);
-          process.stdout.write(char);
-        }
-      });
+      process.stdin.on("data", onData);
       return;
     }
 
-    // Fallback to readline for non-interactive or non-Qwen modes
+    // Fallback to readline for non-interactive terminals
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -651,8 +842,8 @@ async function main() {
     const isQwen = agentName === "qwen";
 
     if (!request) {
-      // Use Qwen interactive mode for better Ctrl+J support
-      const response = await promptForPrdRequest({ useQwenInteractive: isQwen });
+      // Use enhanced raw mode input for all agents
+      const response = await promptForPrdRequest();
       if (response.cancelled) {
         console.log("Cancelled.");
         process.exit(0);
