@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "project": "Qwen PRD Interview Reliability",
+  "overview": "Fix `ralph prd --agent qwen` so users can edit the initial feature request normally and complete a multi-step clarifying interview without the agent session exiting prematurely.",
+  "goals": [
+    "Allow normal editing and submit behavior for the initial PRD request input in terminal UX.",
+    "Keep qwen PRD generation attached to an interactive terminal session so clarifying questions can be answered in the same run.",
+    "Prevent regressions with automated tests for the qwen interview flow and prompt behavior."
+  ],
+  "nonGoals": [
+    "No redesign of the entire Ralph CLI.",
+    "No changes to qwen CLI internals outside Ralph integration.",
+    "No implementation of product features beyond PRD interview/input reliability."
+  ],
+  "successMetrics": [
+    "A user can type, edit, and submit a PRD request in one attempt without losing input.",
+    "In interactive terminal mode, qwen can ask follow-up questions and receive at least two user answers in the same command session.",
+    "`npm test` and `npm run test:ping` pass with added regression coverage."
+  ],
+  "openQuestions": [
+    "Should Enter always submit the initial request, or should multiline input be supported with a dedicated keybinding (for example Ctrl+J)?",
+    "Should non-interactive shells fail fast with guidance, or downgrade to one-shot PRD generation without interview?"
+  ],
+  "stack": {
+    "framework": "Node.js CLI + Bash loop templates",
+    "hosting": "Local terminal execution",
+    "database": "None (JSON files in `.agents/tasks`)",
+    "auth": "Handled by each external agent CLI (including qwen)"
+  },
+  "routes": [
+    {
+      "path": "ralph prd [\"<request>\"] [--out <path>] [--agent qwen]",
+      "name": "PRD command",
+      "purpose": "Collect request and start PRD generation flow"
+    },
+    {
+      "path": ".agents/ralph/loop.sh prd --prompt <file>",
+      "name": "PRD loop mode",
+      "purpose": "Build agent prompt and invoke selected agent command"
+    }
+  ],
+  "uiNotes": [
+    "Terminal prompt for feature request must support cursor movement, insertion, and deletion before submit.",
+    "Cancel actions must be explicit and graceful (`Ctrl+C` -> cancelled output).",
+    "Interview mode must keep stdin/stdout connected so user can answer follow-up questions inline."
+  ],
+  "dataModel": [
+    {
+      "entity": "PrdRequest",
+      "fields": [
+        "source (inline|prompt-file|interactive-input)",
+        "text",
+        "agent",
+        "createdAt"
+      ]
+    },
+    {
+      "entity": "PrdSession",
+      "fields": [
+        "agent",
+        "mode (interactive|headless)",
+        "exitCode",
+        "logPath"
+      ]
+    }
+  ],
+  "importFormat": {
+    "description": "Not applicable; input comes from terminal text prompt or `--prompt` file.",
+    "example": {}
+  },
+  "rules": [
+    "If stdin/stdout are TTY and agent has an interactive PRD command, PRD flow must use interactive invocation.",
+    "If user submits empty initial request, the command must stop with a clear validation message and not invoke the agent.",
+    "Interactive PRD flow must not terminate immediately after agent asks clarifying questions.",
+    "Changes must not break existing non-PRD build loop behavior."
+  ],
+  "qualityGates": [
+    "npm test",
+    "npm run test:ping"
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Fix initial PRD request input editing",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As a user, I want to edit my `ralph prd` feature request before submit so I can provide an accurate prompt.",
+      "acceptanceCriteria": [
+        "Interactive `ralph prd --agent qwen` input supports typing, cursor movement, and backspace/delete before submit.",
+        "Pressing Enter submits the request and starts PRD generation exactly once.",
+        "Example: user types `\u0432\u043e\u0442 \u043c\u043e\u0439 \u0442\u0435\u043a\u0441\u0442`, moves cursor, edits wording, presses Enter, and the saved request matches the final edited text.",
+        "Negative case: pressing Enter on empty input prints `No description provided.` and exits with non-zero code without spawning PRD agent process."
+      ],
+      "startedAt": "2026-02-26T11:27:01.642975+00:00",
+      "completedAt": "2026-02-26T11:38:14.962128+00:00",
+      "updatedAt": "2026-02-26T11:38:14.961673+00:00"
+    },
+    {
+      "id": "US-002",
+      "title": "Keep qwen PRD interview session interactive",
+      "status": "done",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a user, I want qwen to stay in the same terminal session during PRD interview so I can answer clarifying questions.",
+      "acceptanceCriteria": [
+        "When agent is `qwen` in PRD mode and terminal is interactive, the process runs with stdin/stdout attached for two-way dialogue.",
+        "Qwen can ask clarifying questions and wait for user answers in the same command run.",
+        "Example: qwen asks question batch, user answers in terminal, qwen continues with next batch and then writes/saves final PRD.",
+        "Negative case: if qwen exits before PRD save confirmation, Ralph exits non-zero and prints actionable troubleshooting guidance."
+      ],
+      "startedAt": "2026-02-26T11:38:17.056498+00:00",
+      "completedAt": "2026-02-26T11:47:56.399039+00:00",
+      "updatedAt": "2026-02-26T11:47:56.398581+00:00"
+    },
+    {
+      "id": "US-003",
+      "title": "Add regression tests for PRD interview behavior",
+      "status": "in_progress",
+      "dependsOn": [
+        "US-002"
+      ],
+      "description": "As a maintainer, I want automated tests around PRD interview mode so the qwen interaction bug does not return.",
+      "acceptanceCriteria": [
+        "Test coverage includes the interactive qwen PRD flow using a deterministic mocked agent command.",
+        "Coverage validates request input capture and at least one back-and-forth clarifying interaction.",
+        "Example: mock qwen asks two questions, receives two answers, and emits final save message; test verifies successful exit.",
+        "Negative case: mock qwen that exits after asking questions causes command failure and test asserts non-zero exit plus clear error output."
+      ],
+      "startedAt": "2026-02-26T11:47:58.487329+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-02-26T12:14:07.452617+00:00"
+    },
+    {
+      "id": "US-004",
+      "title": "Document PRD input and interview troubleshooting",
+      "status": "open",
+      "dependsOn": [
+        "US-002",
+        "US-003"
+      ],
+      "description": "As a user, I want clear docs for PRD input behavior and qwen interview mode so I can self-diagnose terminal issues.",
+      "acceptanceCriteria": [
+        "README documents expected `ralph prd --agent qwen` interactive flow and request-input editing behavior.",
+        "Docs include troubleshooting for premature exit (TTY checks, command override, shell context).",
+        "Example: documentation includes a working command sample and expected clarifying interview sequence.",
+        "Negative case: docs explicitly state non-interactive stdin limitations and do not imply interview mode works when input is piped."
+      ]
+    }
+  ]
+}
